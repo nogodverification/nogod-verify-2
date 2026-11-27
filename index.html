@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Info Steps</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --text:#1f2937; --muted:#6b7280; --primary:#2563eb; --border:#d1d5db; --ok:#16a34a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); display:flex; justify-content:center; padding:24px 16px; }
+  .wrap { width:100%; max-width:520px; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 16px; font-size:.9rem; }
+  .progress { display:flex; gap:6px; margin-bottom:16px; }
+  .progress div { flex:1; height:6px; border-radius:3px; background:var(--border); }
+  .progress div.active { background:var(--primary); }
+  .progress div.done { background:var(--ok); }
+  .card { background:var(--card); border-radius:14px; padding:20px; box-shadow:0 2px 10px rgba(0,0,0,.07); margin-bottom:16px; }
+  label { display:block; font-weight:600; margin:12px 0 6px; }
+  input, select, textarea { width:100%; padding:10px 12px; font-size:1rem; border:1px solid var(--border); border-radius:8px; font-family:inherit; }
+  input:focus, select:focus, textarea:focus { outline:2px solid var(--primary); border-color:transparent; }
+  textarea { min-height:110px; resize:vertical; }
+  .btns { display:flex; gap:10px; margin-top:18px; }
+  button { flex:1; padding:11px; font-size:1rem; border:0; border-radius:8px; cursor:pointer; font-weight:600; }
+  .primary { background:var(--primary); color:#fff; }
+  .secondary { background:#e5e7eb; color:var(--text); }
+  .error { color:#dc2626; font-size:.85rem; margin-top:6px; min-height:1em; }
+  .step { display:none; }
+  .step.show { display:block; }
+  table { width:100%; border-collapse:collapse; font-size:.95rem; }
+  td { padding:8px 4px; border-bottom:1px solid #eee; vertical-align:top; }
+  td:first-child { color:var(--muted); width:42%; }
+  td.val { word-break:break-word; white-space:pre-wrap; }
+  .empty { color:#9ca3af; font-style:italic; }
+  .edit { background:none; color:var(--primary); padding:0; flex:none; font-size:.8rem; text-decoration:underline; }
+  h2 { font-size:1rem; margin:0 0 10px; }
+  .saved { color:var(--ok); font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Student Information</h1>
+  <p class="sub">Step <span id="stepNum">1</span> of 5</p>
+  <div class="progress" id="progress"></div>
+
+  <div class="card">
+    <!-- Step 1 -->
+    <div class="step" data-step="1">
+      <label for="studentNumber">Student Number</label>
+      <input id="studentNumber" type="text" inputmode="numeric" placeholder="e.g. 20241234" autocomplete="off">
+      <div class="error" id="err1"></div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step" data-step="2">
+      <label for="classNumber">Class Number</label>
+      <input id="classNumber" type="text" placeholder="e.g. 5" autocomplete="off">
+      <div class="error" id="err2"></div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step" data-step="3">
+      <label for="lastClassDate">Last Class Date</label>
+      <input id="lastClassDate" type="date">
+      <label for="currentLevel">Current Level</label>
+      <input id="currentLevel" type="number" inputmode="numeric" min="0" step="1" placeholder="Write your level number, e.g. 3" autocomplete="off">
+      <div class="error" id="err3"></div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step" data-step="4">
+      <label for="smsText">SMS from School</label>
+      <textarea id="smsText" placeholder="Paste the SMS message you received from the school here..."></textarea>
+      <div class="error" id="err4"></div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step" data-step="5">
+      <h2>Review all your input</h2>
+      <p class="sub">Everything you entered is below. Use "Edit" to change any item.</p>
+      <p class="saved" id="savedMsg"></p>
+    </div>
+
+    <div class="btns">
+      <button class="secondary" id="backBtn" type="button">Back</button>
+      <button class="primary" id="nextBtn" type="button">Next</button>
+    </div>
+  </div>
+
+  <!-- Live view of entered data -->
+  <div class="card">
+    <h2>Your input data</h2>
+    <table id="summary"></table>
+    <div class="btns"><button class="secondary" id="clearBtn" type="button">Clear all data</button></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+(function () {
+  var TOTAL = 5;
+
+  // ====== FIREBASE CONFIG: Firebase Console > Project settings > Your apps > Web app theke copy kore boshan ======
+  var FIREBASE_CONFIG = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT",
+    appId: "YOUR_APP_ID"
+  };
+  // ================================================================================================
+
+  var db = null, completed = false, syncTimer = null;
+  try {
+    if (FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY" && window.firebase) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+      db = firebase.database();
+    }
+  } catch (e) { console.error(e); }
+
+  function newSessionId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+  var sid;
+  try { sid = localStorage.getItem("studentSessionId"); } catch (e) {}
+  if (!sid) {
+    sid = newSessionId();
+    try { localStorage.setItem("studentSessionId", sid); } catch (e) {}
+  }
+
+  function sync() {
+    if (!db) return;
+    db.ref("submissions/" + sid).update({
+      studentNumber: data.studentNumber || "",
+      classNumber: data.classNumber || "",
+      lastClassDate: data.lastClassDate || "",
+      currentLevel: data.currentLevel || "",
+      smsText: data.smsText || "",
+      step: step,
+      completed: completed,
+      updatedAt: firebase.database.ServerValue.TIMESTAMP
+    }).catch(function (e) { console.error(e); });
+  }
+  function scheduleSync() {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(sync, 500);
+  }
+  var KEY = "studentFormData";
+  var data = { studentNumber:"", classNumber:"", lastClassDate:"", currentLevel:"", smsText:"" };
+  var step = 1;
+
+  var fields = {
+    studentNumber: document.getElementById("studentNumber"),
+    classNumber: document.getElementById("classNumber"),
+    lastClassDate: document.getElementById("lastClassDate"),
+    currentLevel: document.getElementById("currentLevel"),
+    smsText: document.getElementById("smsText")
+  };
+  var labels = [
+    ["studentNumber", "Student Number", 1],
+    ["classNumber", "Class Number", 2],
+    ["lastClassDate", "Last Class Date", 3],
+    ["currentLevel", "Current Level", 3],
+    ["smsText", "SMS from School", 4]
+  ];
+
+  function load() {
+    try {
+      var s = localStorage.getItem(KEY);
+      if (s) data = Object.assign(data, JSON.parse(s));
+    } catch (e) {}
+    for (var k in fields) fields[k].value = data[k] || "";
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+  }
+  function collect() {
+    for (var k in fields) data[k] = fields[k].value.trim();
+    save();
+    renderSummary();
+    scheduleSync();
+  }
+
+  function renderProgress() {
+    var p = document.getElementById("progress");
+    p.innerHTML = "";
+    for (var i = 1; i <= TOTAL; i++) {
+      var d = document.createElement("div");
+      if (i < step) d.className = "done";
+      else if (i === step) d.className = "active";
+      p.appendChild(d);
+    }
+  }
+
+  function renderSummary() {
+    var t = document.getElementById("summary");
+    t.innerHTML = "";
+    labels.forEach(function (l) {
+      var tr = document.createElement("tr");
+      var td1 = document.createElement("td");
+      td1.textContent = l[1];
+      var td2 = document.createElement("td");
+      td2.className = "val";
+      if (data[l[0]]) td2.textContent = data[l[0]];
+      else { td2.className += " empty"; td2.textContent = "not entered yet"; }
+      var td3 = document.createElement("td");
+      var b = document.createElement("button");
+      b.className = "edit"; b.type = "button"; b.textContent = "Edit";
+      b.onclick = function () { collect(); go(l[2]); };
+      td3.appendChild(b);
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      t.appendChild(tr);
+    });
+  }
+
+  function validate(n) {
+    var msg = "";
+    if (n === 1 && !fields.studentNumber.value.trim()) msg = "Please enter the student number.";
+    if (n === 2 && !fields.classNumber.value.trim()) msg = "Please enter the class number.";
+    if (n === 3) {
+      if (!fields.lastClassDate.value) msg = "Please choose the last class date.";
+      else if (!fields.currentLevel.value.trim()) msg = "Please write the current level number.";
+    }
+    if (n === 4 && !fields.smsText.value.trim()) msg = "Please paste the SMS from school.";
+    var el = document.getElementById("err" + n);
+    if (el) el.textContent = msg;
+    return !msg;
+  }
+
+  function go(n) {
+    step = n;
+    document.querySelectorAll(".step").forEach(function (s) {
+      s.classList.toggle("show", +s.getAttribute("data-step") === step);
+    });
+    document.getElementById("stepNum").textContent = step;
+    document.getElementById("backBtn").style.visibility = step === 1 ? "hidden" : "visible";
+    document.getElementById("nextBtn").textContent = step === TOTAL ? "Done" : (step === TOTAL - 1 ? "Review" : "Next");
+    document.getElementById("savedMsg").textContent = step === TOTAL ? "All data saved in this browser." : "";
+    renderProgress();
+    scheduleSync();
+  }
+
+  document.getElementById("nextBtn").onclick = function () {
+    if (step < TOTAL) {
+      if (!validate(step)) return;
+      collect();
+      go(step + 1);
+    } else {
+      completed = true;
+      collect();
+      document.getElementById("savedMsg").textContent = "Saved! Thank you.";
+    }
+  };
+  document.getElementById("backBtn").onclick = function () {
+    collect();
+    if (step > 1) go(step - 1);
+  };
+  document.getElementById("clearBtn").onclick = function () {
+    if (!confirm("Clear all entered data?")) return;
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    completed = false;
+    sid = newSessionId();
+    try { localStorage.setItem("studentSessionId", sid); } catch (e) {}
+    for (var k in fields) { fields[k].value = ""; data[k] = ""; }
+    renderSummary();
+    go(1);
+  };
+
+  // live update of the summary while typing
+  for (var k in fields) {
+    fields[k].addEventListener("input", collect);
+    fields[k].addEventListener("change", collect);
+  }
+
+  load();
+  renderSummary();
+  go(1);
+})();
+</script>
+</body>
+</html>
