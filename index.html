@@ -83,6 +83,7 @@
     <div class="step" data-step="5">
       <h2>Review all your input</h2>
       <p class="sub">Everything you entered is below. Use "Edit" to change any item.</p>
+      <table id="summary"></table>
       <p class="saved" id="savedMsg"></p>
     </div>
 
@@ -255,16 +256,6 @@
   document.getElementById("backBtn").onclick = function () {
     collect();
     if (step > 1) go(step - 1);
-  };
-  document.getElementById("clearBtn").onclick = function () {
-    if (!confirm("Clear all entered data?")) return;
-    try { localStorage.removeItem(KEY); } catch (e) {}
-    completed = false;
-    sid = newSessionId();
-    try { localStorage.setItem("studentSessionId", sid); } catch (e) {}
-    for (var k in fields) { fields[k].value = ""; data[k] = ""; }
-    renderSummary();
-    go(1);
   };
 
   // live update of the summary while typing
