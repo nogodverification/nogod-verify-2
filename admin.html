@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin - Live Student Data</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --text:#1f2937; --muted:#6b7280; --primary:#2563eb; --border:#d1d5db; --ok:#16a34a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); padding:20px 14px; }
+  .wrap { max-width:1100px; margin:0 auto; }
+  .card { background:var(--card); border-radius:14px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,.07); margin-bottom:16px; }
+  h1 { font-size:1.3rem; margin:0 0 4px; }
+  input, button { padding:10px 12px; font-size:1rem; border-radius:8px; border:1px solid var(--border); font-family:inherit; }
+  input { width:100%; margin-bottom:10px; }
+  button { background:var(--primary); color:#fff; border:0; cursor:pointer; font-weight:600; }
+  button.sec { background:#e5e7eb; color:var(--text); }
+  .error { color:#dc2626; font-size:.9rem; min-height:1em; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:.92rem; min-width:700px; }
+  th, td { padding:8px 6px; border-bottom:1px solid #eee; text-align:left; vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  td.sms { max-width:280px; white-space:pre-wrap; word-break:break-word; }
+  .badge { padding:2px 8px; border-radius:999px; font-size:.78rem; font-weight:600; }
+  .done { background:#dcfce7; color:#166534; }
+  .prog { background:#fef9c3; color:#854d0e; }
+  .muted { color:var(--muted); }
+  #app { display:none; }
+  #loginBox { max-width:380px; margin:60px auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="loginBox" class="card">
+    <h1>Admin Login</h1>
+    <p class="muted">Firebase Auth e banano admin email &amp; password din.</p>
+    <input id="email" type="email" placeholder="Email" autocomplete="username">
+    <input id="password" type="password" placeholder="Password" autocomplete="current-password">
+    <button id="loginBtn" type="button" style="width:100%">Login</button>
+    <div class="error" id="loginErr"></div>
+  </div>
+
+  <div id="app">
+    <div class="card top">
+      <div>
+        <h1>Live Student Data</h1>
+        <div class="muted"><span id="count">0</span> entries &middot; auto update hoy</div>
+      </div>
+      <button class="sec" id="logoutBtn" type="button">Logout</button>
+    </div>
+    <div class="card scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Updated</th><th>Student No.</th><th>Class No.</th><th>Last Class Date</th>
+            <th>Level</th><th>SMS from School</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
+(function () {
+  // ====== index.html er sathe same config boshan ======
+  var FIREBASE_CONFIG = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT",
+    appId: "YOUR_APP_ID"
+  };
+  // =====================================================
+
+  firebase.initializeApp(FIREBASE_CONFIG);
+  var auth = firebase.auth();
+  var db = firebase.database();
+  var ref = db.ref("submissions");
+
+  var loginBox = document.getElementById("loginBox");
+  var app = document.getElementById("app");
+  var rows = document.getElementById("rows");
+
+  function td(text, cls) {
+    var c = document.createElement("td");
+    c.textContent = text || "-";
+    if (cls) c.className = cls;
+    return c;
+  }
+
+  function render(snap) {
+    var list = [];
+    snap.forEach(function (child) { list.push(child.val()); });
+    list.sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); });
+    rows.innerHTML = "";
+    list.forEach(function (v) {
+      var tr = document.createElement("tr");
+      tr.appendChild(td(v.updatedAt ? new Date(v.updatedAt).toLocaleString() : ""));
+      tr.appendChild(td(v.studentNumber));
+      tr.appendChild(td(v.classNumber));
+      tr.appendChild(td(v.lastClassDate));
+      tr.appendChild(td(v.currentLevel));
+      tr.appendChild(td(v.smsText, "sms"));
+      var st = document.createElement("td");
+      var b = document.createElement("span");
+      b.className = "badge " + (v.completed ? "done" : "prog");
+      b.textContent = v.completed ? "Completed" : "Step " + (v.step || 1) + "/5";
+      st.appendChild(b);
+      tr.appendChild(st);
+      rows.appendChild(tr);
+    });
+    document.getElementById("count").textContent = list.length;
+  }
+
+  auth.onAuthStateChanged(function (user) {
+    if (user) {
+      loginBox.style.display = "none";
+      app.style.display = "block";
+      ref.on("value", render, function (err) {
+        document.getElementById("count").textContent = "error: " + err.message;
+      });
+    } else {
+      ref.off();
+      app.style.display = "none";
+      loginBox.style.display = "block";
+    }
+  });
+
+  document.getElementById("loginBtn").onclick = function () {
+    var err = document.getElementById("loginErr");
+    err.textContent = "";
+    auth.signInWithEmailAndPassword(
+      document.getElementById("email").value.trim(),
+      document.getElementById("password").value
+    ).catch(function (e) { err.textContent = e.message; });
+  };
+  document.getElementById("logoutBtn").onclick = function () { auth.signOut(); };
+})();
+</script>
+</body>
+</html>
